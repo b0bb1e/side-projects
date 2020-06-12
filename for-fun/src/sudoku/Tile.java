@@ -101,6 +101,7 @@ public class Tile {
 		if (couldBe(num)) {
 			// otherwise set the single number
 			this.num = num;
+			
 			// only canBe this number
 			canBe = new boolean[Board.SIZE];
 			canBe[num - 1] = true;
