@@ -118,6 +118,22 @@ public class Tile {
 	public int getCol() {return col;}
 	
 	/**
+	 * @return an array of possible values
+	 */
+	public int[] getAllPos() {
+		// count the number of possibles
+		int count = 0;
+		for (boolean pos : canBe)
+			if (pos) ++count;
+		// copy int-values into new array
+		int[] allPos = new int[count];
+		int addIndex = 0;
+		for (int i = 0; i < canBe.length; ++i)
+			if (canBe[i]) allPos[addIndex++] = (i + 1);
+		return allPos;
+	}
+	
+	/**
 	 * @param whether this Tile should be highlighted
 	 */
 	public void setHighlight(boolean highlight) {this.highlight = highlight;}
@@ -141,7 +157,13 @@ public class Tile {
 	/**
 	 * @param num the number to set as impossible
 	 */
-	public void removePos(int num) {canBe[num - 1] = false;}
+	public boolean removePos(int num) {
+		if (canBe[num - 1]) {
+			canBe[num - 1] = false;
+			return true;
+		}
+		return false;
+	}
 	
 	/**
 	 * Draws the Tile in its current state

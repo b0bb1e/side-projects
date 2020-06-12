@@ -5,6 +5,7 @@ import java.awt.Graphics;
 
 // for arrays that can change size
 import java.util.ArrayList;
+import java.util.HashMap;
 
 // for dealing with files
 import java.io.File;
@@ -58,7 +59,7 @@ public class Board {
 	/**
 	 * the # of rows (of groups, and within groups)
 	 */
-	public static final int ROWS = 2;
+	public static final int ROWS = 3;
 	/**
 	 * the # of columns (of groups, and within groups)
 	 */
@@ -129,7 +130,10 @@ public class Board {
 	 */
 	public boolean setNum(int num) {
 		// use general setNum on active
-		return setNum(active, num);
+		boolean set = setNum(active, num);
+		// deal with invisibles
+		removeInvisible();
+		return set;
 	}
 
 	/**
@@ -164,7 +168,7 @@ public class Board {
 	 */
 	private boolean setNum(Tile tile, int num) {
 		// unsuccessful if tile is null or cannot be set
-		if (tile == null || !tile.couldBe(num)) return false;
+		if (tile == null || !tile.couldBe(num) || num <= 0 || num > SIZE) return false;
 		
 		// set the number, and record the move
 		tile.setNum(num);
@@ -195,6 +199,8 @@ public class Board {
 		// similar loop for group
 		for (Tile other : groups[getGroup(row, col)])
 			other.removePos(pos);
+		// add center back
+		center.addPos(pos);
 	}
 	
 	/**
@@ -222,6 +228,9 @@ public class Board {
 		for (Tile other : groups[getGroup(row, col)])
 			if (!other.hasNum() && !canSee(other, pos))
 				other.addPos(pos);
+		
+		// deal with inivisibles
+		removeInvisible();
 	}
 	
 	/**
@@ -287,9 +296,91 @@ public class Board {
 	}
 	
 	/**
+	 * Remove "invisible" impossibilities
+	 * <br>
+	 * If any group (row, column, box) has n cells which share the same exact n possibilities,
+	 * then no other cells in that group can have any of those n possibilities EVEN THOUGH
+	 * it is not known which of the n cells has each possibility
+	 */
+	private void removeInvisible() {
+		// map possibilities to Tiles
+		HashMap<HashableArray, ArrayList<Tile>> pos = new HashMap<HashableArray, ArrayList<Tile>>();
+		// no Tiles have been removed yet
+		boolean removed = false;
+		
+		// check each group individually
+		for (Tile[] group : groups) {
+			// for each Tile which has possibilities (plural)
+			for (Tile tile : group) if (!tile.hasNum()) {
+				// wrap possibilities
+				HashableArray curPos = new HashableArray(tile.getAllPos());
+				// save in map
+				pos.putIfAbsent(curPos, new ArrayList<Tile>());
+				pos.get(curPos).add(tile);
+			}
+			
+			// for each group of possibilities
+			for (HashableArray posse : pos.keySet()) {
+				// if there are n Tiles sharing n possibilities
+				if (posse.length() == pos.get(posse).size()) 
+					// remove all n possibilities from all other Tiles in group
+					for (Tile tile : group) if (!pos.get(posse).contains(tile)) 
+						for (int p : posse.getArr()) if (tile.removePos(p))
+							// note if a removal occurred ^^^
+							removed = true;
+			}
+			// clean up
+			pos.clear();
+		}
+		
+		// same for rows
+		for (Tile[] row : rows) {
+			for (Tile tile : row) if (!tile.hasNum()) {
+				HashableArray curPos = new HashableArray(tile.getAllPos());
+				pos.putIfAbsent(curPos, new ArrayList<Tile>());
+				pos.get(curPos).add(tile);
+			}
+			
+			for (HashableArray posse : pos.keySet())
+				if (posse.length() == pos.get(posse).size()) 
+					for (Tile tile : row) if (!pos.get(posse).contains(tile)) 
+						for (int p : posse.getArr()) if (tile.removePos(p))
+							removed = true;
+			
+			pos.clear();
+		}
+		
+		// same for columns
+		for (int col = 0; col < SIZE; ++col) {
+			for (int row = 0; row < SIZE; ++row) {
+				Tile tile = rows[row][col];
+				if (!tile.hasNum()) {
+					HashableArray curPos = new HashableArray(tile.getAllPos());
+					pos.putIfAbsent(curPos, new ArrayList<Tile>());
+					pos.get(curPos).add(tile);
+				}
+			}
+			for (HashableArray posse : pos.keySet())
+				if (posse.length() == pos.get(posse).size()) 
+					for (int row = 0; row < SIZE; ++row) {
+						Tile tile = rows[row][col];
+						if (!pos.get(posse).contains(tile)) 
+						for (int p : posse.getArr()) if (tile.removePos(p))
+							removed = true;
+					}
+			
+			pos.clear();
+		}
+		
+		// if any possibilities were removed, recalculate
+		if (removed) removeInvisible();
+	}
+	
+	
+	/**
 	 * Saves the current state to a file
 	 */
-	public void save() {
+ 	public void save() {
 		// point a writer at the save-file
 		try(BufferedWriter writer = 
 					new BufferedWriter(new FileWriter(saveFile))) {
@@ -345,9 +436,66 @@ public class Board {
 		finally {
 			// clear all "moves"
 			changed.clear();
+			// remove "invisible" impossibles
+			removeInvisible();
 			// reset moves file
 			try {moveWriter = new BufferedWriter(new FileWriter(moveFile));}
 			catch (IOException e) {}
 		}
+	}
+	
+	/**
+	 * An array which is actually hashable - [3] == [3], even if different instances
+	 * @author faith
+	 */
+	private class HashableArray {
+		/**
+		 * the wrapped array
+		 */
+		private int[] arr;
+		/**
+		 * the array represented as a String
+		 */
+		private String arrString;
+		
+		/**
+		 * Wraps an array and calculates its String
+		 * @param arr the array to wrap
+		 */
+		public HashableArray(int[] arr) {
+			// clone array so that outside changes will not affect inside
+			this.arr = arr.clone();
+			if (arr.length == 0) arrString = "[]";
+			else {
+				// builds up, essentially, Arrays.toString()
+				arrString = "[";
+				for (int num : arr)
+					arrString += num + ", ";
+				
+				arrString =  arrString.substring(0, arrString.length() - 2) + "]";
+			}
+		}
+		
+		/**
+		 * @return a clone of wrapped array
+		 */
+		public int[] getArr() {return arr.clone();}
+		
+		public int length() {return arr.length;}
+		
+		public boolean equals(Object obj) {
+			if (obj instanceof HashableArray)
+				// inner-array strings are easier to check than arrays
+				return toString().equals(((HashableArray) obj).toString());
+			
+			return false;
+		}
+		
+		public String toString() {return arrString;}
+		
+		/**
+		 * Uses the array-string's hashcode
+		 */
+		public int hashCode() {return arrString.hashCode();}
 	}
 }
